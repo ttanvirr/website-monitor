@@ -1,0 +1,22 @@
+# Add one website URL per line. Both formats are accepted:
+# https://example.com
+# example.org
+axentialdistributions.com
+businessinspection.com.bd
+businessinspection.net
+essentixsupplies.com
+gooutdoorzone.com
+inspection.xyz
+businessinspection.com.bd
+mavic.digital
+omnitraxretail.com
+primepickery.com
+productvideostudio.com
+reviewzone.media
+saifulrahman.com
+techinspection.net
+testerszone.com
+tools-zone.com
+top10-zone.com
+werbackspace.com
+10.studio
