@@ -8,6 +8,7 @@ This document serves as the guide for AI coding agents and human contributors ma
 
 `website-monitor` is an automated Python monitoring utility designed to run daily (via cron or Windows Task Scheduler). It audits a list of URLs and evaluates:
 - **HTTP Availability, Response Time & Status**: HTTP status codes, response time (ms), redirects, and homepage HTML content validity.
+- **Static Assets Integrity**: Audits stylesheets (CSS), scripts (JS), icons, and images linked on the homepage. Flags broken assets (4xx/5xx/CORS/hotlinking errors) under Issues and marks site as WARNING to catch unstyled or broken pages.
 - **Hosting Problem Signatures**: Underlying detection of hosting suspension notices, resource exhaustion (e.g. HTTP 508), or parked pages (reported under Issues & Potential Expiration).
 - **DNS Resolution**: IPv4 (`A`) and IPv6 (`AAAA`) resolution.
 - **SSL / TLS Certificate**: Expiration date, days remaining, certificate validation status.
@@ -120,8 +121,10 @@ Raw URL -> normalize_url() -> resolve_host() [DNS]
    - SSL valid (if HTTPS) with > `warning_days` remaining.
    - Domain expiration > `warning_days` remaining (or unconfirmed).
    - No hosting suspension signatures detected.
+   - All critical static assets (CSS, JS, images) load successfully.
 2. **`WARNING`**:
    - Website is accessible, but SSL certificate or domain expiration is within `warning_days` (default 30 days).
+   - One or more static assets failed to load (e.g. HTTP 403 Forbidden, 404 Not Found, connection errors), causing degraded appearance or functionality.
    - Expected HTML content type was not returned (e.g. API JSON or empty response).
 3. **`DOWN`**:
    - DNS resolution failure, connection timeout, connection refused, or HTTP status >= 400.

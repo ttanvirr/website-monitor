@@ -56,6 +56,51 @@ class ParsingTests(unittest.TestCase):
     def test_does_not_flag_generic_word_suspended(self):
         self.assertEqual(monitor.detect_hosting_indicators("The user suspended the animation."), [])
 
+    def test_extract_static_assets(self):
+        html = """
+        <html>
+        <head>
+            <link rel="stylesheet" href="/css/main.css">
+            <link rel="shortcut icon" href="/favicon.ico">
+            <script src="https://cdn.example.com/app.js"></script>
+        </head>
+        <body>
+            <img src="/images/logo.png">
+            <img src="data:image/png;base64,123">
+        </body>
+        </html>
+        """
+        assets = monitor.extract_static_assets(html, "https://example.com/page/")
+        urls = [url for kind, url in assets]
+        self.assertIn("https://example.com/css/main.css", urls)
+        self.assertIn("https://cdn.example.com/app.js", urls)
+        self.assertIn("https://example.com/images/logo.png", urls)
+        self.assertIn("https://example.com/favicon.ico", urls)
+        # data: URIs must be excluded
+        self.assertFalse(any("base64" in u for u in urls))
+
+    def test_check_static_assets_detects_failures(self):
+        session = MagicMock(spec=requests.Session)
+        mock_resp_403 = MagicMock()
+        mock_resp_403.status_code = 403
+        mock_resp_403.reason = "Forbidden"
+
+        mock_resp_200 = MagicMock()
+        mock_resp_200.status_code = 200
+
+        # return 403 for first, 200 for second
+        session.get.return_value.__enter__.side_effect = [mock_resp_403, mock_resp_200]
+
+        assets = [
+            ("stylesheet", "https://example.com/bad.css"),
+            ("script", "https://example.com/good.js"),
+        ]
+        total, failed = monitor.check_static_assets(assets, "https://example.com", session)
+        self.assertEqual(total, 2)
+        self.assertEqual(len(failed), 1)
+        self.assertIn("403 Forbidden", failed[0])
+        self.assertIn("bad.css", failed[0])
+
 
 class SSLTests(unittest.TestCase):
     @patch("website_monitor.socket.create_connection", side_effect=socket.timeout("timed out"))
@@ -210,6 +255,27 @@ class MonitoringTests(unittest.TestCase):
         result = monitor.check_website("ftp://example.com", MagicMock(spec=requests.Session), monitor.CheckConfig())
         self.assertEqual(result.final_status, "UNABLE_TO_VERIFY")
         self.assertEqual(result.availability, "INVALID_URL")
+
+    @patch("website_monitor.check_static_assets", return_value=(2, ["[403 Forbidden] stylesheet: https://example.com/broken.css"]))
+    @patch("website_monitor.extract_static_assets", return_value=[("stylesheet", "https://example.com/broken.css")])
+    @patch("website_monitor.lookup_domain_expiration", return_value=("NO_EXPIRATION_DATA", "Not published", "N/A", None))
+    @patch("website_monitor.resolve_dns", return_value=("RESOLVED", ["203.0.113.10"], None))
+    @patch("website_monitor.check_ssl_certificate", return_value=("VALID", "2027-01-01 00:00 UTC", 53, None))
+    def test_failed_static_assets_marks_website_as_warning(self, _ssl, _dns, _rdap, _extract, _check):
+        response = MagicMock()
+        response.status_code = 200
+        response.url = "https://example.com/"
+        response.headers = {"Content-Type": "text/html"}
+        response.text = "<html><head><link rel='stylesheet' href='/broken.css'></head><body>OK</body></html>"
+        response.history = []
+        session = MagicMock(spec=requests.Session)
+        session.get.return_value = response
+
+        result = monitor.check_website("https://example.com", session, monitor.CheckConfig())
+        self.assertEqual(result.final_status, "WARNING")
+        self.assertEqual(len(result.failed_assets), 1)
+        self.assertTrue(any("static asset(s) failed to load" in issue for issue in result.issues))
+        self.assertTrue(any("broken static asset" in rec.lower() for rec in result.recommendations))
 
 
     def test_local_fixture_server_and_cli_generate_daily_reports(self):

@@ -8,6 +8,7 @@ and therefore cannot confirm whether a hosting subscription has been paid.
 from __future__ import annotations
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 import csv
 import html
 import ipaddress
@@ -21,7 +22,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, time, timezone
 from pathlib import Path
 from typing import Iterable
-from urllib.parse import quote, urlsplit, urlunsplit
+from urllib.parse import quote, urljoin, urlsplit, urlunsplit
 
 import requests
 from cryptography import x509
@@ -65,6 +66,9 @@ class CheckConfig:
     connect_timeout: float = 5.0
     read_timeout: float = 15.0
     warning_days: int = 30
+    check_assets: bool = True
+    max_assets: int = 40
+    asset_timeout: float = 4.0
 
 
 @dataclass
@@ -87,6 +91,9 @@ class WebsiteResult:
     ssl_status: str = "NOT_APPLICABLE"
     ssl_expires_at: str = "N/A"
     ssl_days_remaining: str = "N/A"
+    total_assets_checked: int = 0
+    failed_assets: list[str] = field(default_factory=list)
+    assets_summary: str = "N/A"
     hosting_indicators: list[str] = field(default_factory=list)
     issues: list[str] = field(default_factory=list)
     recommendations: list[str] = field(default_factory=list)
@@ -98,6 +105,7 @@ class WebsiteResult:
             "HTTP Status": self.http_status,
             "Availability": self.availability,
             "Response Time (ms)": str(self.response_time_ms),
+            "Static Assets": self.assets_summary,
             "Domain Expiration": self.domain_expiration,
             "Domain Days Remaining": str(self.domain_days_remaining),
             "SSL Status": self.ssl_status,
@@ -453,6 +461,99 @@ def detect_hosting_indicators(page_text: str) -> list[str]:
     return found
 
 
+def extract_static_assets(html_text: str, base_url: str, max_assets: int = 40) -> list[tuple[str, str]]:
+    """Extract static assets (stylesheets, scripts, icons, images) from homepage HTML."""
+    assets: list[tuple[str, str]] = []
+    seen: set[str] = set()
+
+    def add_asset(kind: str, raw_url: str | None) -> None:
+        if not raw_url:
+            return
+        candidate = raw_url.strip()
+        if candidate.startswith(("data:", "javascript:", "mailto:", "#", "tel:")):
+            return
+        abs_url = urljoin(base_url, candidate)
+        parts = urlsplit(abs_url)
+        clean_url = urlunsplit((parts.scheme, parts.netloc, parts.path, parts.query, ""))
+        if clean_url not in seen and parts.scheme in ("http", "https"):
+            seen.add(clean_url)
+            assets.append((kind, clean_url))
+
+    # 1. Stylesheets & Icons
+    for tag in re.finditer(r"<link\b[^>]*>", html_text, re.IGNORECASE):
+        tag_str = tag.group(0)
+        rel_m = re.search(r'rel=[\"\']([^\"\']+)[\"\']', tag_str, re.IGNORECASE)
+        href_m = re.search(r'href=[\"\']([^\"\']+)[\"\']', tag_str, re.IGNORECASE)
+        if rel_m and href_m:
+            rels = rel_m.group(1).lower().split()
+            if "stylesheet" in rels:
+                add_asset("stylesheet", href_m.group(1))
+            elif "icon" in rels or "shortcut" in rels:
+                add_asset("icon", href_m.group(1))
+
+    # 2. Scripts
+    for tag in re.finditer(r"<script\b[^>]*>", html_text, re.IGNORECASE):
+        tag_str = tag.group(0)
+        src_m = re.search(r'src=[\"\']([^\"\']+)[\"\']', tag_str, re.IGNORECASE)
+        if src_m:
+            add_asset("script", src_m.group(1))
+
+    # 3. Images
+    for tag in re.finditer(r"<img\b[^>]*>", html_text, re.IGNORECASE):
+        tag_str = tag.group(0)
+        src_m = re.search(r'src=[\"\']([^\"\']+)[\"\']', tag_str, re.IGNORECASE)
+        if src_m:
+            add_asset("image", src_m.group(1))
+
+    # Prioritize critical rendering assets: stylesheets and scripts first, then icons and images
+    stylesheets = [a for a in assets if a[0] == "stylesheet"]
+    scripts = [a for a in assets if a[0] == "script"]
+    others = [a for a in assets if a[0] not in ("stylesheet", "script")]
+
+    prioritized = stylesheets + scripts + others
+    return prioritized[:max_assets]
+
+
+def check_static_assets(
+    assets: list[tuple[str, str]],
+    referer: str,
+    session: requests.Session,
+    timeout: float = 4.0,
+    max_workers: int = 6,
+) -> tuple[int, list[str]]:
+    """Check accessibility of static assets concurrently using stream=True."""
+    if not assets:
+        return 0, []
+
+    headers = {
+        "User-Agent": USER_AGENT,
+        "Referer": referer,
+        "Accept": "*/*",
+    }
+
+    def check_asset(item: tuple[str, str]) -> tuple[bool, str]:
+        kind, url = item
+        try:
+            with session.get(url, headers=headers, stream=True, timeout=timeout, allow_redirects=True) as resp:
+                if resp.status_code >= 400:
+                    return False, f"[{resp.status_code} {resp.reason}] {kind}: {url}"
+                return True, ""
+        except requests.exceptions.SSLError as exc:
+            return False, f"[SSL Error] {kind}: {url} ({exc.__class__.__name__})"
+        except requests.exceptions.Timeout:
+            return False, f"[Timeout] {kind}: {url}"
+        except requests.exceptions.ConnectionError:
+            return False, f"[Connection Failed] {kind}: {url}"
+        except requests.exceptions.RequestException as exc:
+            return False, f"[Failed] {kind}: {url} ({exc})"
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        results = list(executor.map(check_asset, assets))
+
+    failed = [msg for ok, msg in results if not ok]
+    return len(assets), failed
+
+
 def _get_port(url: str) -> int:
     parsed = urlsplit(url)
     if parsed.port:
@@ -490,6 +591,8 @@ def _classify_result(result: WebsiteResult, warning_days: int) -> str:
         return "WARNING"
     if result.availability == "AVAILABLE" and result.content_type not in {"text/html", "application/xhtml+xml", "HTML (detected)"}:
         return "WARNING"
+    if result.failed_assets:
+        return "WARNING"
     if result.normalized_url.startswith("http://"):
         return "WARNING"
     if result.dns_status == "FAILED":
@@ -513,6 +616,10 @@ def _build_recommendations(result: WebsiteResult, warning_days: int) -> list[str
         actions.append("Check the origin server, web-server logs, DNS configuration, and hosting provider status.")
     if result.http_status.isdigit() and int(result.http_status) >= 400:
         actions.append("Investigate the HTTP error and confirm the homepage is intended to be publicly accessible.")
+    if result.failed_assets:
+        actions.append(
+            f"Fix {len(result.failed_assets)} broken static asset(s) (CSS/JS/images) or resolve CORS/hotlink blocking from external hosts."
+        )
     if result.ssl_status == "EXPIRED":
         actions.append("Renew or replace the expired SSL certificate and verify the full certificate chain.")
     elif result.ssl_status == "INVALID_OR_UNTRUSTED":
@@ -642,6 +749,29 @@ def check_website(
             redirect_count = len(response.history)
             result.issues.append(f"The request followed {redirect_count} redirect(s); final URL: {response.url}")
 
+        if config.check_assets and result.content_type in {"text/html", "application/xhtml+xml", "HTML (detected)"}:
+            assets = extract_static_assets(body, result.final_url or normalized_url, config.max_assets)
+            total_checked, failed_assets = check_static_assets(
+                assets,
+                result.final_url or normalized_url,
+                session,
+                timeout=config.asset_timeout,
+            )
+            result.total_assets_checked = total_checked
+            result.failed_assets = failed_assets
+            if total_checked > 0:
+                if failed_assets:
+                    result.assets_summary = f"{len(failed_assets)} failed / {total_checked} checked"
+                    result.issues.append(
+                        f"{len(failed_assets)} static asset(s) failed to load out of {total_checked} checked."
+                    )
+                    for failure in failed_assets[:5]:
+                        result.issues.append(f"Broken asset: {failure}")
+                    if len(failed_assets) > 5:
+                        result.issues.append(f"...and {len(failed_assets) - 5} more failed static asset(s).")
+                else:
+                    result.assets_summary = f"All OK ({total_checked} checked)"
+
     except requests.exceptions.SSLError as exc:
         result.availability = "SSL_ERROR"
         result.issues.append(f"HTTPS request failed certificate/security verification: {exc}")
@@ -766,6 +896,19 @@ def write_reports(results: list[WebsiteResult], reports_dir: Path, now: datetime
         else:
             response_time_display = html.escape(str(result.response_time_ms))
 
+        if result.failed_assets:
+            assets_display = (
+                f"<strong style=\"color: #b42318;\">{len(result.failed_assets)} failed</strong>"
+                f"<small>{len(result.failed_assets)}/{result.total_assets_checked} failed</small>"
+            )
+        elif result.total_assets_checked > 0:
+            assets_display = (
+                f"<span style=\"color: #067647; font-weight: 600;\">OK</span>"
+                f"<small>{result.total_assets_checked} checked</small>"
+            )
+        else:
+            assets_display = "N/A"
+
         table_rows.append(
             "<tr>"
             f"<td>{website_label}"
@@ -773,6 +916,7 @@ def write_reports(results: list[WebsiteResult], reports_dir: Path, now: datetime
             f"<td>{html.escape(result.http_status)}</td>"
             f"<td>{html.escape(result.availability)}</td>"
             f"<td>{response_time_display}</td>"
+            f"<td>{assets_display}</td>"
             f"<td>{html.escape(result.domain_expiration)}<small>{html.escape(str(result.domain_days_remaining))} day(s) remaining</small></td>"
             f"<td>{html.escape(result.ssl_status)}<small>{html.escape(result.ssl_expires_at)}; {html.escape(str(result.ssl_days_remaining))} day(s)</small></td>"
             f"<td>{html.escape(result.dns_status)}<small>{html.escape(result.resolved_ips)}</small></td>"
@@ -822,7 +966,7 @@ a {{ color: #175cd3; overflow-wrap: anywhere; }}
 <div class="meta">Audit time: {html.escape(report_time.isoformat(timespec='seconds'))} · Total websites checked: {len(results)}</div>
 <div class="summary">{summary_cards}</div>
 <div class="table-wrap"><table>
-<thead><tr><th>Website</th><th>HTTP</th><th>Availability</th><th>Response time</th><th>Domain expiration</th><th>SSL</th><th>DNS</th><th>IP network RDAP (not necessarily host)</th><th>Final status</th><th>Issues</th><th>Recommended actions</th></tr></thead>
+<thead><tr><th>Website</th><th>HTTP</th><th>Availability</th><th>Response time</th><th>Static assets</th><th>Domain expiration</th><th>SSL</th><th>DNS</th><th>IP network RDAP (not necessarily host)</th><th>Final status</th><th>Issues</th><th>Recommended actions</th></tr></thead>
 <tbody>{''.join(table_rows)}</tbody>
 </table></div>
 <p class="note"><strong>Important:</strong> This report checks public website behavior and public registration/certificate data. It cannot confirm whether a hosting invoice has been paid or a hosting subscription is active. A website can be down for reasons other than hosting expiration, and RDAP data may omit domain expiration dates.</p>
@@ -856,13 +1000,15 @@ def build_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument("--connect-timeout", type=float, default=5.0, help="Connection timeout in seconds (default: 5).")
     parser.add_argument("--read-timeout", type=float, default=15.0, help="Response timeout in seconds (default: 15).")
     parser.add_argument("--warning-days", type=int, default=30, help="Flag domain/SSL expirations within this many days (default: 30).")
+    parser.add_argument("--skip-assets", action="store_true", help="Skip checking static assets (CSS, JS, images).")
+    parser.add_argument("--max-assets", type=int, default=40, help="Maximum number of static assets to check per page (default: 40).")
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_argument_parser().parse_args(argv)
-    if args.connect_timeout <= 0 or args.read_timeout <= 0 or args.warning_days < 0:
-        print("Timeouts must be positive and warning-days cannot be negative.", file=sys.stderr)
+    if args.connect_timeout <= 0 or args.read_timeout <= 0 or args.warning_days < 0 or args.max_assets < 0:
+        print("Timeouts must be positive and warning-days/max-assets cannot be negative.", file=sys.stderr)
         return 2
 
     logger = configure_logging(args.logs_dir)
@@ -880,6 +1026,8 @@ def main(argv: list[str] | None = None) -> int:
         connect_timeout=args.connect_timeout,
         read_timeout=args.read_timeout,
         warning_days=args.warning_days,
+        check_assets=not args.skip_assets,
+        max_assets=args.max_assets,
     )
     logger.info("Starting audit for %d website(s).", len(urls))
     with requests.Session() as session:
