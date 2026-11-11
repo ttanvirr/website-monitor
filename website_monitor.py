@@ -75,6 +75,7 @@ class WebsiteResult:
     final_url: str = ""
     http_status: str = "N/A"
     availability: str = "NOT_CHECKED"
+    response_time_ms: int | str = "N/A"
     content_type: str = "N/A"
     dns_status: str = "NOT_CHECKED"
     resolved_ips: str = "N/A"
@@ -96,6 +97,7 @@ class WebsiteResult:
             "Website URL": self.website,
             "HTTP Status": self.http_status,
             "Availability": self.availability,
+            "Response Time (ms)": str(self.response_time_ms),
             "Domain Expiration": self.domain_expiration,
             "Domain Days Remaining": str(self.domain_days_remaining),
             "SSL Status": self.ssl_status,
@@ -104,7 +106,6 @@ class WebsiteResult:
             "DNS Status": self.dns_status,
             "Resolved IPs": self.resolved_ips,
             "IP Network RDAP (not necessarily host)": self.ip_network_info,
-            "Hosting Indicators": "; ".join(self.hosting_indicators) or "None detected",
             "Final Status": self.final_status,
             "Final URL": self.final_url or "N/A",
             "Issues": "; ".join(self.issues) or "None detected",
@@ -200,12 +201,100 @@ def _parse_rdap_datetime(value: str) -> datetime | None:
     return parsed.astimezone(timezone.utc)
 
 
+def _parse_whois_expiration_text(text: str) -> datetime | None:
+    """Extract and parse an expiration date from raw WHOIS text."""
+    for line in text.splitlines():
+        match = re.search(
+            r"(?:registry expiry date|expiry date|expiration date|paid-till|expire date|expires on|expires)\s*[:=]\s*(.+)$",
+            line,
+            re.IGNORECASE,
+        )
+        if match:
+            candidate = match.group(1).strip()
+            dt = _parse_rdap_datetime(candidate)
+            if dt:
+                return dt
+            for fmt in (
+                "%d/%m/%Y",
+                "%d-%m-%Y",
+                "%d.%m.%Y",
+                "%d/%m/%Y %H:%M:%S",
+                "%d-%m-%Y %H:%M:%S",
+                "%Y/%m/%d",
+                "%d-%b-%Y",
+                "%d-%b-%Y %H:%M:%S",
+                "%Y-%m-%d %H:%M:%S",
+                "%b %d %Y",
+                "%d %b %Y",
+            ):
+                try:
+                    parsed = datetime.strptime(candidate, fmt)
+                    return parsed.replace(tzinfo=timezone.utc)
+                except ValueError:
+                    continue
+    return None
+
+
+def lookup_whois_expiration(
+    domain: str,
+    config: CheckConfig,
+) -> tuple[str, str, int | str, str | None]:
+    """Look up domain expiration through standard port-43 WHOIS servers as a fallback."""
+    lower_domain = domain.lower()
+    # Specialized regional servers for ccTLDs without public IANA port-43/RDAP entries
+    if lower_domain.endswith(".bd"):
+        server = "whois.get.bd"
+    else:
+        # Check IANA referral for the TLD
+        tld = lower_domain.rsplit(".", 1)[-1]
+        server = None
+        try:
+            with socket.create_connection(("whois.iana.org", 43), timeout=config.connect_timeout) as sock:
+                sock.sendall(f"{tld}\r\n".encode("utf-8"))
+                response = b""
+                while True:
+                    chunk = sock.recv(4096)
+                    if not chunk:
+                        break
+                    response += chunk
+                for line in response.decode("utf-8", errors="ignore").splitlines():
+                    if line.lower().startswith("whois:"):
+                        server = line.split(":", 1)[1].strip()
+                        break
+        except OSError:
+            server = None
+
+    if not server:
+        return "UNAVAILABLE", "Unknown", "N/A", f"No public WHOIS server identified for domain '{domain}'."
+
+    try:
+        with socket.create_connection((server, 43), timeout=config.connect_timeout) as sock:
+            sock.sendall(f"{domain}\r\n".encode("utf-8"))
+            response = b""
+            while len(response) < 65536:
+                chunk = sock.recv(4096)
+                if not chunk:
+                    break
+                response += chunk
+            text = response.decode("utf-8", errors="ignore")
+    except OSError as exc:
+        return "UNAVAILABLE", "Unknown", "N/A", f"WHOIS query to {server} failed: {exc}"
+
+    expiration = _parse_whois_expiration_text(text)
+    if expiration is None:
+        return "NO_EXPIRATION_DATA", "Not published", "N/A", None
+
+    remaining = _days_until(expiration)
+    label = expiration.strftime("%Y-%m-%d %H:%M UTC")
+    return "FOUND", label, remaining, None
+
+
 def lookup_domain_expiration(
     domain: str,
     session: requests.Session,
     config: CheckConfig,
 ) -> tuple[str, str, int | str, str | None]:
-    """Look up a domain's expiration event through the public RDAP redirector."""
+    """Look up a domain's expiration event through public RDAP with WHOIS fallback."""
     try:
         ipaddress.ip_address(domain)
         return "NOT_APPLICABLE", "N/A", "N/A", None
@@ -215,6 +304,7 @@ def lookup_domain_expiration(
     # RDAP provides registration data where the registry publishes it. Some
     # registries redact or omit expiration events, so an unknown result is normal.
     endpoint = f"https://rdap.org/domain/{quote(domain, safe='.-')}"
+    rdap_error = None
     try:
         response = session.get(
             endpoint,
@@ -222,30 +312,38 @@ def lookup_domain_expiration(
             timeout=(config.connect_timeout, config.read_timeout),
             allow_redirects=True,
         )
-        if response.status_code != 200:
-            return "UNAVAILABLE", "Unknown", "N/A", f"RDAP lookup returned HTTP {response.status_code}."
-        data = response.json()
+        if response.status_code == 200:
+            data = response.json()
+            expiration: datetime | None = None
+            for event in data.get("events", []) if isinstance(data, dict) else []:
+                if not isinstance(event, dict):
+                    continue
+                action = str(event.get("eventAction", "")).lower()
+                if "expir" in action:
+                    expiration = _parse_rdap_datetime(event.get("eventDate", ""))
+                    if expiration:
+                        break
+            if expiration is not None:
+                remaining = _days_until(expiration)
+                label = expiration.strftime("%Y-%m-%d %H:%M UTC")
+                return "FOUND", label, remaining, None
+            rdap_error = "RDAP record did not publish an expiration event."
+        else:
+            rdap_error = f"RDAP lookup returned HTTP {response.status_code}."
     except requests.RequestException as exc:
-        return "UNAVAILABLE", "Unknown", "N/A", f"RDAP lookup failed: {exc}"
+        rdap_error = f"RDAP lookup failed: {exc}"
     except (ValueError, TypeError) as exc:
-        return "UNAVAILABLE", "Unknown", "N/A", f"RDAP response could not be parsed: {exc}"
+        rdap_error = f"RDAP response could not be parsed: {exc}"
 
-    expiration: datetime | None = None
-    for event in data.get("events", []) if isinstance(data, dict) else []:
-        if not isinstance(event, dict):
-            continue
-        action = str(event.get("eventAction", "")).lower()
-        if "expir" in action:
-            expiration = _parse_rdap_datetime(event.get("eventDate", ""))
-            if expiration:
-                break
+    # Fallback to port-43 WHOIS lookup (for ccTLDs like .bd where RDAP is not available)
+    whois_status, whois_label, whois_days, whois_error = lookup_whois_expiration(domain, config)
+    if whois_status == "FOUND":
+        return whois_status, whois_label, whois_days, None
 
-    if expiration is None:
+    if whois_status == "NO_EXPIRATION_DATA":
         return "NO_EXPIRATION_DATA", "Not published", "N/A", None
 
-    remaining = _days_until(expiration)
-    label = expiration.strftime("%Y-%m-%d %H:%M UTC")
-    return "FOUND", label, remaining, None
+    return "UNAVAILABLE", "Unknown", "N/A", rdap_error or whois_error
 
 
 def lookup_ip_network_info(
@@ -514,6 +612,7 @@ def check_website(
         )
         result.http_status = str(response.status_code)
         result.final_url = response.url
+        result.response_time_ms = int(response.elapsed.total_seconds() * 1000)
         raw_content_type = response.headers.get("Content-Type", "").split(";", 1)[0].strip().lower()
         body = response.text or ""
         if raw_content_type:
@@ -659,17 +758,25 @@ def write_reports(results: list[WebsiteResult], reports_dir: Path, now: datetime
         else:
             # Invalid/untrusted input is shown as text, never emitted as a link.
             website_label = html.escape(result.website)
+        if isinstance(result.response_time_ms, (int, float)):
+            if result.response_time_ms >= 1000:
+                response_time_display = f"{result.response_time_ms / 1000:.2f} s<small>{result.response_time_ms} ms</small>"
+            else:
+                response_time_display = f"{result.response_time_ms} ms"
+        else:
+            response_time_display = html.escape(str(result.response_time_ms))
+
         table_rows.append(
             "<tr>"
             f"<td>{website_label}"
             f"<small>Final URL: {html.escape(result.final_url or 'N/A')}</small></td>"
             f"<td>{html.escape(result.http_status)}</td>"
             f"<td>{html.escape(result.availability)}</td>"
+            f"<td>{response_time_display}</td>"
             f"<td>{html.escape(result.domain_expiration)}<small>{html.escape(str(result.domain_days_remaining))} day(s) remaining</small></td>"
             f"<td>{html.escape(result.ssl_status)}<small>{html.escape(result.ssl_expires_at)}; {html.escape(str(result.ssl_days_remaining))} day(s)</small></td>"
             f"<td>{html.escape(result.dns_status)}<small>{html.escape(result.resolved_ips)}</small></td>"
             f"<td>{html.escape(result.ip_network_info)}</td>"
-            f"<td>{html.escape('; '.join(result.hosting_indicators) or 'None detected')}</td>"
             f"<td><span class=\"status {status_class}\">{html.escape(result.final_status)}</span></td>"
             f"<td>{issues}</td><td>{recommendations}</td>"
             "</tr>"
@@ -715,7 +822,7 @@ a {{ color: #175cd3; overflow-wrap: anywhere; }}
 <div class="meta">Audit time: {html.escape(report_time.isoformat(timespec='seconds'))} · Total websites checked: {len(results)}</div>
 <div class="summary">{summary_cards}</div>
 <div class="table-wrap"><table>
-<thead><tr><th>Website</th><th>HTTP</th><th>Availability</th><th>Domain expiration</th><th>SSL</th><th>DNS</th><th>IP network RDAP (not necessarily host)</th><th>Hosting indicators</th><th>Final status</th><th>Issues</th><th>Recommended actions</th></tr></thead>
+<thead><tr><th>Website</th><th>HTTP</th><th>Availability</th><th>Response time</th><th>Domain expiration</th><th>SSL</th><th>DNS</th><th>IP network RDAP (not necessarily host)</th><th>Final status</th><th>Issues</th><th>Recommended actions</th></tr></thead>
 <tbody>{''.join(table_rows)}</tbody>
 </table></div>
 <p class="note"><strong>Important:</strong> This report checks public website behavior and public registration/certificate data. It cannot confirm whether a hosting invoice has been paid or a hosting subscription is active. A website can be down for reasons other than hosting expiration, and RDAP data may omit domain expiration dates.</p>

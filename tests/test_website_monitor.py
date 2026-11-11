@@ -39,6 +39,16 @@ class ParsingTests(unittest.TestCase):
         expiration = monitor._parse_rdap_datetime("2030-05-10")
         self.assertEqual(expiration, datetime(2030, 5, 10, tzinfo=timezone.utc))
 
+    def test_parses_whois_expiration_text_dd_mm_yyyy(self):
+        sample = "Domain Name: example.com.bd\r\nActivation Date: 01/04/2021\r\nExpiry Date: 01/04/2029\r\n"
+        expiration = monitor._parse_whois_expiration_text(sample)
+        self.assertEqual(expiration, datetime(2029, 4, 1, tzinfo=timezone.utc))
+
+    def test_parses_whois_expiration_text_iso(self):
+        sample = "Registry Expiry Date: 2028-11-20T10:00:00Z\r\n"
+        expiration = monitor._parse_whois_expiration_text(sample)
+        self.assertEqual(expiration, datetime(2028, 11, 20, 10, 0, tzinfo=timezone.utc))
+
     def test_detects_hosting_indicators(self):
         found = monitor.detect_hosting_indicators("Sorry, this account has been suspended by the provider.")
         self.assertIn("Possible hosting/account suspension page", found)
@@ -62,6 +72,42 @@ class SSLTests(unittest.TestCase):
         value = monitor.lookup_ip_network_info("127.0.0.1", session, monitor.CheckConfig())
         self.assertIn("Private/reserved", value)
         session.get.assert_not_called()
+
+
+class DomainExpirationTests(unittest.TestCase):
+    @patch("website_monitor.socket.create_connection")
+    def test_lookup_whois_expiration_queries_get_bd(self, mock_connect):
+        mock_sock = MagicMock()
+        mock_sock.recv.side_effect = [
+            b"Domain Name: test.com.bd\r\nExpiry Date: 01/04/2029\r\n",
+            b"",
+        ]
+        mock_connect.return_value.__enter__.return_value = mock_sock
+
+        status, label, days, error = monitor.lookup_whois_expiration("test.com.bd", monitor.CheckConfig())
+        self.assertEqual(status, "FOUND")
+        self.assertIn("2029-04-01", label)
+        self.assertIsInstance(days, int)
+        self.assertIsNone(error)
+        mock_connect.assert_called_with(("whois.get.bd", 43), timeout=5.0)
+
+    @patch("website_monitor.lookup_whois_expiration")
+    def test_lookup_domain_expiration_falls_back_when_rdap_404(self, mock_whois):
+        mock_whois.return_value = ("FOUND", "2029-04-01 00:00 UTC", 800, None)
+        session = MagicMock(spec=requests.Session)
+        mock_response = MagicMock()
+        mock_response.status_code = 404
+        session.get.return_value = mock_response
+
+        status, label, days, error = monitor.lookup_domain_expiration(
+            "test.com.bd", session, monitor.CheckConfig()
+        )
+        self.assertEqual(status, "FOUND")
+        self.assertEqual(label, "2029-04-01 00:00 UTC")
+        self.assertEqual(days, 800)
+        self.assertIsNone(error)
+        mock_whois.assert_called_once_with("test.com.bd", monitor.CheckConfig())
+
 
 class MonitoringTests(unittest.TestCase):
     def _result(self, status="WORKING"):
@@ -205,6 +251,7 @@ class MonitoringTests(unittest.TestCase):
                     rows = list(csv.DictReader(file))
                 self.assertEqual(len(rows), 2)
                 self.assertEqual(rows[0]["HTTP Status"], "200")
+                self.assertIn("Response Time (ms)", rows[0])
                 self.assertEqual(rows[0]["Final Status"], "WARNING")  # HTTP-only homepage
                 self.assertEqual(rows[1]["HTTP Status"], "503")
                 self.assertEqual(rows[1]["Final Status"], "DOWN")

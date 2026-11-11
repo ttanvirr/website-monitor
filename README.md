@@ -83,7 +83,7 @@ From the project directory:
 ### Linux / WSL
 
 ```bash
-.venv/bin/python website_monitor.py
+(.venv)$ python website_monitor.py
 ```
 
 ### Windows PowerShell
@@ -128,21 +128,21 @@ This is the simplest option if the project is stored on the Windows filesystem a
 4. Choose **Start a program**.
 5. Set **Program/script** to the full path of the virtual environment's Python executable, for example:
 
-   ```text
-   C:\Users\YOUR_USER\website-monitor\.venv\Scripts\python.exe
-   ```
+    ```text
+    C:\Users\YOUR_USER\website-monitor\.venv\Scripts\python.exe
+    ```
 
 6. Set **Add arguments** to:
 
-   ```text
-   website_monitor.py
-   ```
+    ```text
+    website_monitor.py
+    ```
 
 7. Set **Start in** to the project directory, for example:
 
-   ```text
-   C:\Users\YOUR_USER\website-monitor
-   ```
+    ```text
+    C:\Users\YOUR_USER\website-monitor
+    ```
 
 8. Finish. Open the task's **Properties** and use **Run** to test it. Check the `reports` and `logs` folders afterward.
 
@@ -161,9 +161,9 @@ Then create a daily task with:
 - **Program/script:** `C:\Windows\System32\wsl.exe`
 - **Add arguments:** (replace `Ubuntu` and the Linux path as needed)
 
-  ```text
-  -d Ubuntu --exec /bin/bash -lc "cd /home/YOUR_LINUX_USER/website-monitor && /home/YOUR_LINUX_USER/website-monitor/.venv/bin/python website_monitor.py"
-  ```
+    ```text
+    -d Ubuntu --exec /bin/bash -lc "cd /home/YOUR_LINUX_USER/website-monitor && /home/YOUR_LINUX_USER/website-monitor/.venv/bin/python website_monitor.py"
+    ```
 
 - **Start in:** leave blank.
 
@@ -183,13 +183,13 @@ Edit your crontab with `crontab -e`. Cron uses the machine's configured timezone
 
 The HTML report is intended for quick review. The CSV contains the same key fields in a spreadsheet-friendly format.
 
-| Final status | Meaning |
-|---|---|
-| `WORKING` | Homepage is reachable, returns an identified HTML response, and no significant checked issue was found. |
-| `WARNING` | Homepage responds, but an issue needs attention (for example, HTTP 4xx, use of HTTP without HTTPS, certificate trouble, an approaching expiration, or a resource-limit page). |
-| `DOWN` | A connection/DNS/timeout problem or an HTTP 5xx server error prevented a normal check. |
-| `POTENTIAL_EXPIRATION` | Public RDAP data says the domain expiration date has passed, or the page contains a specific domain/hosting suspension or expiration indicator. Confirm with the provider. |
-| `UNABLE_TO_VERIFY` | The URL is invalid or the check could not establish enough information to classify the website. |
+| Final status           | Meaning                                                                                                                                                                       |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `WORKING`              | Homepage is reachable, returns an identified HTML response, and no significant checked issue was found.                                                                       |
+| `WARNING`              | Homepage responds, but an issue needs attention (for example, HTTP 4xx, use of HTTP without HTTPS, certificate trouble, an approaching expiration, or a resource-limit page). |
+| `DOWN`                 | A connection/DNS/timeout problem or an HTTP 5xx server error prevented a normal check.                                                                                        |
+| `POTENTIAL_EXPIRATION` | Public RDAP data says the domain expiration date has passed, or the page contains a specific domain/hosting suspension or expiration indicator. Confirm with the provider.    |
+| `UNABLE_TO_VERIFY`     | The URL is invalid or the check could not establish enough information to classify the website.                                                                               |
 
 Component fields provide more detail:
 
