@@ -131,6 +131,7 @@ Raw URL -> normalize_url() -> resolve_host() [DNS]
 4. **`POTENTIAL_EXPIRATION`**:
    - SSL certificate or domain registration has expired (`days_remaining < 0`).
    - Page content contains verified hosting suspension or resource exhaustion keywords (`detect_hosting_indicators()`).
+   - The final redirected URL points to a hosting-provider suspension page (e.g. cPanel's `/cgi-sys/suspendedpage.cgi`), detected via `SUSPENDED_URL_FRAGMENTS`. Such pages return HTTP 200 but are not the real website.
 5. **`UNABLE_TO_VERIFY`**:
    - Malformed URL or non-resolvable domain without clear classification.
 
@@ -152,6 +153,7 @@ When checking domain expiration:
    - If RDAP returns 404, unavailable, or lacks expiration data, inspect domain TLD.
    - For `.bd` domains (`.bd`, `.com.bd`, `.org.bd`, etc.), query `whois.get.bd` on port 43.
    - Parse registry date formats (such as `DD/MM/YYYY` or ISO `YYYY-MM-DD`).
+   - The WHOIS socket uses `max(connect_timeout, read_timeout)` as its timeout (so slow regional servers do not prematurely fail), and the query is **retried once** after a 1.5 s delay when the first attempt fails. This reliability layer must not be removed — it directly prevents `Unknown` / `N/A` expiration results for `.bd` domains.
 3. **Tier 3 (Generic WHOIS / IANA Referral)**:
    - Query `whois.iana.org:43` to detect referral WHOIS servers for other ccTLDs.
 4. **Graceful Fallback**:
@@ -175,4 +177,43 @@ When checking domain expiration:
    - When multiple runs occur in one day without overwriting, append a timestamp `website_report_YYYY-MM-DD_HHMMSS`.
 5. **Preserve Existing Documentation**:
    - Keep all docstrings, comments, and alerts in `README.md` and `website_monitor.py` intact when modifying neighboring code.
+
+---
+
+## 7. Resolved Issues & Protected Code (DO NOT MODIFY UNLESS EXPLICITLY REQUESTED)
+
+> **CRITICAL INSTRUCTION FOR ALL AGENTS**: The issues listed below have been **deliberately resolved** and verified. You must **not** revert, weaken, or "simplify" any of the following behavior unless the user explicitly asks you to do so. If you are working on an unrelated change, leave these areas untouched. If a future task seems to conflict with these protections, **ask the user first** before making changes.
+
+### 7.1 cPanel / Hosting Suspension Page Detection (resolved 2026-11-12)
+
+**Problem**: Websites hosted on suspended cPanel accounts return HTTP 200 and serve a "This page is currently unavailable" page from `/cgi-sys/suspendedpage.cgi`. The monitor classified them as `WORKING`, hiding broken sites.
+
+**Resolution**:
+- `HOSTING_PAGE_PHRASES["Possible hosting/account suspension page"]` includes the cPanel boilerplate phrases:
+  - `"this page is currently unavailable"`
+  - `"if you are the webmaster for this site, please contact your hosting provider"`
+  - `"contact your hosting provider's support team for assistance"`
+- `SUSPENDED_URL_FRAGMENTS` (`suspendedpage.cgi`, `/cgi-sys/suspendedpage`, `suspended_page`, `account-suspended`) is checked against the **final redirected URL** in `detect_hosting_indicators(page_text, final_url)`.
+- `check_website` passes `response.url` to `detect_hosting_indicators`.
+- Any match classifies the site as `POTENTIAL_EXPIRATION` (not `WORKING`).
+
+**Protected**: Do not remove these phrases, the `SUSPENDED_URL_FRAGMENTS` constant, the `final_url` parameter, or the call-site change. Doing so will silently hide suspended websites.
+
+### 7.2 `.bd` Domain Expiration Resolution (resolved 2026-11-12)
+
+**Problem**: `businessinspection.com.bd` (and other `.bd` domains) showed `Unknown` / `N/A day(s) remaining` because the port-43 WHOIS query to `whois.get.bd` intermittently failed, and the previous code did not retry.
+
+**Resolution**:
+- `_query_whois_server(server, query, timeout)` encapsulates the raw WHOIS query and returns `None` on any `OSError`.
+- `lookup_whois_expiration` calls `_query_whois_server` once and, on failure, **sleeps 1.5 s and retries once** before returning `UNAVAILABLE`.
+- The WHOIS socket timeout is `max(config.connect_timeout, config.read_timeout)` (default 15 s), not just `connect_timeout` (5 s), so slow regional WHOIS servers get enough time to respond.
+- `.bd` domains always target `whois.get.bd` (no IANA referral needed).
+
+**Protected**: Do not remove the retry, the 1.5 s sleep, the `max(...)` timeout, or the `whois.get.bd` special-case for `.bd`. Doing so will cause intermittent `Unknown` expiration results for `.bd` domains.
+
+### 7.3 General Rule
+
+- **Only modify the protected areas above when the user explicitly says so.**
+- When in doubt, **ask the user** rather than risk reintroducing a resolved bug.
+- After fixing any issue, add an entry to this section so future agents know it must be preserved.
 

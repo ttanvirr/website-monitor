@@ -56,6 +56,31 @@ class ParsingTests(unittest.TestCase):
     def test_does_not_flag_generic_word_suspended(self):
         self.assertEqual(monitor.detect_hosting_indicators("The user suspended the animation."), [])
 
+    def test_detects_cpanel_suspended_page_text(self):
+        body = (
+            "<h1>This page is currently unavailable</h1>"
+            "<div>If you are the webmaster for this site, please contact your "
+            "hosting provider's support team for assistance.</div>"
+        )
+        found = monitor.detect_hosting_indicators(body)
+        self.assertIn("Possible hosting/account suspension page", found)
+
+    def test_detects_suspended_page_via_url(self):
+        # A page with neutral content but served from cPanel's suspendedpage.cgi
+        # must still be flagged as a hosting suspension page.
+        found = monitor.detect_hosting_indicators(
+            "Hello world",
+            final_url="https://example.com/cgi-sys/suspendedpage.cgi",
+        )
+        self.assertIn("Possible hosting/account suspension page", found)
+
+    def test_normal_url_does_not_trigger_suspension_flag(self):
+        found = monitor.detect_hosting_indicators(
+            "Welcome to our homepage",
+            final_url="https://example.com/",
+        )
+        self.assertEqual(found, [])
+
     def test_extract_static_assets(self):
         html = """
         <html>
@@ -134,7 +159,7 @@ class DomainExpirationTests(unittest.TestCase):
         self.assertIn("2029-04-01", label)
         self.assertIsInstance(days, int)
         self.assertIsNone(error)
-        mock_connect.assert_called_with(("whois.get.bd", 43), timeout=5.0)
+        mock_connect.assert_called_with(("whois.get.bd", 43), timeout=15.0)
 
     @patch("website_monitor.lookup_whois_expiration")
     def test_lookup_domain_expiration_falls_back_when_rdap_404(self, mock_whois):

@@ -18,8 +18,9 @@ import re
 import socket
 import ssl
 import sys
+import time
 from dataclasses import dataclass, field
-from datetime import date, datetime, time, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Iterable
 from urllib.parse import quote, urljoin, urlsplit, urlunsplit
@@ -40,6 +41,10 @@ HOSTING_PAGE_PHRASES: dict[str, tuple[str, ...]] = {
         "hosting account has been suspended",
         "account suspended by hosting provider",
         "your hosting account is suspended",
+        # cPanel/WHM suspended page (suspendedpage.cgi) boilerplate
+        "this page is currently unavailable",
+        "if you are the webmaster for this site, please contact your hosting provider",
+        "contact your hosting provider's support team for assistance",
     ),
     "Possible domain-expiration page": (
         "this domain has expired",
@@ -59,6 +64,16 @@ HOSTING_PAGE_PHRASES: dict[str, tuple[str, ...]] = {
         "cpu resource limit exceeded",
     ),
 }
+
+# URL path fragments that strongly indicate a hosting-provider suspension page
+# (e.g. cPanel's /cgi-sys/suspendedpage.cgi). These are checked against the
+# final redirected URL in addition to the page body text.
+SUSPENDED_URL_FRAGMENTS: tuple[str, ...] = (
+    "suspendedpage.cgi",
+    "/cgi-sys/suspendedpage",
+    "suspended_page",
+    "account-suspended",
+)
 
 
 @dataclass
@@ -201,7 +216,7 @@ def _parse_rdap_datetime(value: str) -> datetime | None:
     except ValueError:
         try:
             parsed_date = date.fromisoformat(candidate[:10])
-            parsed = datetime.combine(parsed_date, time.min, tzinfo=timezone.utc)
+            parsed = datetime.combine(parsed_date, datetime.time.min, tzinfo=timezone.utc)
         except ValueError:
             return None
     if parsed.tzinfo is None:
@@ -243,6 +258,22 @@ def _parse_whois_expiration_text(text: str) -> datetime | None:
     return None
 
 
+def _query_whois_server(server: str, query: str, timeout: float) -> str | None:
+    """Query a port-43 WHOIS server and return the raw text response, or None on failure."""
+    try:
+        with socket.create_connection((server, 43), timeout=timeout) as sock:
+            sock.sendall(f"{query}\r\n".encode("utf-8"))
+            response = b""
+            while len(response) < 65536:
+                chunk = sock.recv(4096)
+                if not chunk:
+                    break
+                response += chunk
+            return response.decode("utf-8", errors="ignore")
+    except OSError:
+        return None
+
+
 def lookup_whois_expiration(
     domain: str,
     config: CheckConfig,
@@ -256,37 +287,26 @@ def lookup_whois_expiration(
         # Check IANA referral for the TLD
         tld = lower_domain.rsplit(".", 1)[-1]
         server = None
-        try:
-            with socket.create_connection(("whois.iana.org", 43), timeout=config.connect_timeout) as sock:
-                sock.sendall(f"{tld}\r\n".encode("utf-8"))
-                response = b""
-                while True:
-                    chunk = sock.recv(4096)
-                    if not chunk:
-                        break
-                    response += chunk
-                for line in response.decode("utf-8", errors="ignore").splitlines():
-                    if line.lower().startswith("whois:"):
-                        server = line.split(":", 1)[1].strip()
-                        break
-        except OSError:
-            server = None
+        iana_text = _query_whois_server("whois.iana.org", tld, config.connect_timeout)
+        if iana_text:
+            for line in iana_text.splitlines():
+                if line.lower().startswith("whois:"):
+                    server = line.split(":", 1)[1].strip()
+                    break
 
     if not server:
         return "UNAVAILABLE", "Unknown", "N/A", f"No public WHOIS server identified for domain '{domain}'."
 
-    try:
-        with socket.create_connection((server, 43), timeout=config.connect_timeout) as sock:
-            sock.sendall(f"{domain}\r\n".encode("utf-8"))
-            response = b""
-            while len(response) < 65536:
-                chunk = sock.recv(4096)
-                if not chunk:
-                    break
-                response += chunk
-            text = response.decode("utf-8", errors="ignore")
-    except OSError as exc:
-        return "UNAVAILABLE", "Unknown", "N/A", f"WHOIS query to {server} failed: {exc}"
+    # WHOIS servers (especially regional ccTLD servers) can be intermittently slow
+    # or rate-limited. Retry once after a short delay before giving up.
+    timeout = max(config.connect_timeout, config.read_timeout)
+    text = _query_whois_server(server, domain, timeout)
+    if text is None:
+        time.sleep(1.5)
+        text = _query_whois_server(server, domain, timeout)
+
+    if text is None:
+        return "UNAVAILABLE", "Unknown", "N/A", f"WHOIS query to {server} failed after retries."
 
     expiration = _parse_whois_expiration_text(text)
     if expiration is None:
@@ -452,12 +472,23 @@ def check_ssl_certificate(hostname: str, port: int, config: CheckConfig) -> tupl
         return "CHECK_FAILED", "Unknown", "N/A", f"SSL check failed: {exc}"
 
 
-def detect_hosting_indicators(page_text: str) -> list[str]:
+def detect_hosting_indicators(page_text: str, final_url: str | None = None) -> list[str]:
+    """Detect hosting-suspension / expiration signatures in page text and final URL."""
     text = (page_text or "").lower()
     found: list[str] = []
     for label, phrases in HOSTING_PAGE_PHRASES.items():
         if any(phrase in text for phrase in phrases):
             found.append(label)
+
+    # cPanel and similar providers serve the suspension page from a dedicated
+    # CGI endpoint even when the HTTP status is 200. Treat such a redirect target
+    # as a hosting-account suspension indicator regardless of body content.
+    if final_url:
+        url_lower = final_url.lower()
+        if any(fragment in url_lower for fragment in SUSPENDED_URL_FRAGMENTS):
+            label = "Possible hosting/account suspension page"
+            if label not in found:
+                found.append(label)
     return found
 
 
@@ -739,7 +770,7 @@ def check_website(
             result.issues.append(f"The website returned HTTP {response.status_code}.")
 
         # Search the response body even if the server mislabeled the content type.
-        result.hosting_indicators = detect_hosting_indicators(body)
+        result.hosting_indicators = detect_hosting_indicators(body, response.url)
         if result.hosting_indicators:
             result.issues.extend(result.hosting_indicators)
         if result.content_type not in {"text/html", "application/xhtml+xml", "HTML (detected)"} and result.availability == "AVAILABLE":
