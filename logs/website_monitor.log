@@ -275,3 +275,162 @@
 2026-11-12 09:57:17,172 INFO Audit finished. Working=12 Warning=1 Down=0 Potential expiration=5 Unable to verify=0
 2026-11-12 09:57:17,172 INFO CSV report: /home/tanvir/projects/website-monitor/reports/website_report_2026-11-12_095717.csv
 2026-11-12 09:57:17,172 INFO HTML report: /home/tanvir/projects/website-monitor/reports/website_report_2026-11-12_095717.html
+2026-11-14 13:08:12,920 INFO Starting audit for 18 website(s).
+2026-11-14 13:08:12,922 INFO Checking axentialdistributions.com
+2026-11-14 13:08:31,388 INFO Checking businessinspection.com.bd
+2026-11-14 13:08:35,750 INFO Checking businessinspection.net
+2026-11-14 13:08:47,485 INFO Checking essentixsupplies.com
+2026-11-14 13:08:56,231 INFO Checking gooutdoorzone.com
+2026-11-14 13:09:06,179 INFO Checking inspection.xyz
+2026-11-14 13:09:17,381 INFO Checking mavic.digital
+2026-11-14 13:09:36,766 INFO Checking omnitraxretail.com
+2026-11-14 13:09:54,668 INFO Checking primepickery.com
+2026-11-14 13:10:13,331 INFO Checking productvideostudio.com
+2026-11-14 13:10:36,433 INFO Checking reviewzone.media
+2026-11-14 13:10:43,717 INFO Checking saifulrahman.com
+2026-11-14 13:10:57,956 INFO Checking techinspection.net
+2026-11-14 13:11:33,235 INFO Checking testerszone.com
+2026-11-14 13:11:51,037 INFO Checking tools-zone.com
+2026-11-14 13:12:02,278 INFO Checking top10-zone.com
+2026-11-14 13:12:09,618 INFO Checking werbackspace.com
+2026-11-14 13:12:26,397 INFO Checking 10.studio
+2026-11-14 13:12:33,680 INFO Audit finished. Working=14 Warning=4 Down=0 Potential expiration=0 Unable to verify=0
+2026-11-14 13:12:33,680 INFO CSV report: /home/tanvir/projects/website-monitor/reports/website_report_2026-11-14.csv
+2026-11-14 13:12:33,685 INFO HTML report: /home/tanvir/projects/website-monitor/reports/website_report_2026-11-14.html
+2026-11-15 09:19:47,392 INFO Starting audit for 18 website(s).
+2026-11-15 09:19:47,394 INFO Checking axentialdistributions.com
+2026-11-15 09:19:59,990 INFO Checking businessinspection.com.bd
+2026-11-15 09:20:12,304 INFO Checking businessinspection.net
+2026-11-15 09:20:16,202 INFO Checking essentixsupplies.com
+2026-11-15 09:20:23,613 INFO Checking gooutdoorzone.com
+2026-11-15 09:20:29,060 INFO Checking inspection.xyz
+2026-11-15 09:20:34,128 INFO Checking mavic.digital
+2026-11-15 09:20:50,413 INFO Checking omnitraxretail.com
+2026-11-15 09:21:02,230 INFO Checking primepickery.com
+2026-11-15 09:21:13,992 INFO Checking productvideostudio.com
+2026-11-15 09:21:18,783 INFO Checking reviewzone.media
+2026-11-15 09:21:24,808 INFO Checking saifulrahman.com
+2026-11-15 09:21:31,181 INFO Checking techinspection.net
+2026-11-15 09:21:43,154 INFO Checking testerszone.com
+2026-11-15 09:21:58,269 INFO Checking tools-zone.com
+2026-11-15 09:22:03,252 INFO Checking top10-zone.com
+2026-11-15 09:22:06,613 INFO Checking werbackspace.com
+2026-11-15 09:22:18,560 INFO Checking 10.studio
+2026-11-15 09:22:21,686 INFO Audit finished. Working=15 Warning=3 Down=0 Potential expiration=0 Unable to verify=0
+2026-11-15 09:22:21,686 INFO CSV report: /home/tanvir/projects/website-monitor/reports/website_report_2026-11-15.csv
+2026-11-15 09:22:21,686 INFO HTML report: /home/tanvir/projects/website-monitor/reports/website_report_2026-11-15.html
+2026-11-15 10:35:44,442 INFO Starting audit for 18 website(s).
+2026-11-15 10:35:44,447 INFO Checking axentialdistributions.com
+2026-11-15 10:35:55,569 INFO Checking businessinspection.com.bd
+2026-11-15 10:36:04,370 INFO Checking businessinspection.net
+2026-11-15 10:36:09,066 INFO Checking essentixsupplies.com
+2026-11-15 10:36:18,898 INFO Checking gooutdoorzone.com
+2026-11-15 10:36:25,135 INFO Checking inspection.xyz
+2026-11-15 10:36:29,772 INFO Checking mavic.digital
+2026-11-15 10:36:44,887 INFO Checking omnitraxretail.com
+2026-11-15 10:36:57,348 INFO Checking primepickery.com
+2026-11-15 10:37:13,130 INFO Checking productvideostudio.com
+2026-11-15 10:37:18,443 INFO Checking reviewzone.media
+2026-11-15 10:37:21,323 INFO Checking saifulrahman.com
+2026-11-15 10:37:25,713 INFO Checking techinspection.net
+2026-11-15 10:37:36,085 INFO Checking testerszone.com
+2026-11-15 10:37:46,110 INFO Checking tools-zone.com
+2026-11-15 10:37:50,224 INFO Checking top10-zone.com
+2026-11-15 10:37:53,708 INFO Checking werbackspace.com
+2026-11-15 10:38:00,796 INFO Checking 10.studio
+2026-11-15 10:38:04,822 INFO Audit finished. Working=17 Warning=1 Down=0 Potential expiration=0 Unable to verify=0
+2026-11-15 10:38:04,823 INFO CSV report: /home/tanvir/projects/website-monitor/reports/website_report_2026-11-15_103804.csv
+2026-11-15 10:38:04,830 INFO HTML report: /home/tanvir/projects/website-monitor/reports/website_report_2026-11-15_103804.html
+2026-11-16 10:41:56,433 INFO Starting audit for 18 website(s).
+2026-11-16 10:41:56,438 INFO Checking axentialdistributions.com
+2026-11-16 10:42:25,707 INFO Checking businessinspection.com.bd
+2026-11-16 10:42:49,589 INFO Checking businessinspection.net
+2026-11-16 10:43:12,118 INFO Checking essentixsupplies.com
+2026-11-16 10:43:35,464 INFO Checking gooutdoorzone.com
+2026-11-16 10:43:53,779 INFO Checking inspection.xyz
+2026-11-16 10:44:29,201 INFO Checking mavic.digital
+2026-11-16 10:44:50,084 INFO Checking omnitraxretail.com
+2026-11-16 10:45:10,206 INFO Checking primepickery.com
+2026-11-16 10:45:27,488 INFO Checking productvideostudio.com
+2026-11-16 10:45:46,371 INFO Checking reviewzone.media
+2026-11-16 10:46:04,135 INFO Checking saifulrahman.com
+2026-11-16 10:46:21,731 INFO Checking techinspection.net
+2026-11-16 10:46:40,476 INFO Checking testerszone.com
+2026-11-16 10:46:56,809 INFO Checking tools-zone.com
+2026-11-16 10:47:13,416 INFO Checking top10-zone.com
+2026-11-16 10:47:40,371 INFO Checking werbackspace.com
+2026-11-16 10:47:57,792 INFO Checking 10.studio
+2026-11-16 10:48:04,666 INFO Audit finished. Working=16 Warning=2 Down=0 Potential expiration=0 Unable to verify=0
+2026-11-16 10:48:04,667 INFO CSV report: /home/tanvir/projects/website-monitor/reports/website_report_2026-11-16.csv
+2026-11-16 10:48:04,673 INFO HTML report: /home/tanvir/projects/website-monitor/reports/website_report_2026-11-16.html
+2026-11-17 10:20:18,042 INFO Starting audit for 18 website(s).
+2026-11-17 10:20:21,811 INFO Checking axentialdistributions.com
+2026-11-17 10:21:38,938 INFO Checking businessinspection.com.bd
+2026-11-17 10:23:02,673 INFO Checking businessinspection.net
+2026-11-17 10:24:43,329 INFO Checking essentixsupplies.com
+2026-11-18 10:37:26,630 INFO Starting audit for 18 website(s).
+2026-11-18 10:37:26,632 INFO Checking axentialdistributions.com
+2026-11-18 10:37:45,197 INFO Checking businessinspection.com.bd
+2026-11-18 10:37:51,273 INFO Checking businessinspection.net
+2026-11-18 10:37:54,326 INFO Checking essentixsupplies.com
+2026-11-18 10:38:00,594 INFO Checking gooutdoorzone.com
+2026-11-18 10:38:04,403 INFO Checking inspection.xyz
+2026-11-18 10:38:10,156 INFO Checking mavic.digital
+2026-11-18 10:38:20,103 INFO Checking omnitraxretail.com
+2026-11-18 10:38:30,200 INFO Checking primepickery.com
+2026-11-18 10:38:48,001 INFO Checking productvideostudio.com
+2026-11-18 10:38:53,496 INFO Checking reviewzone.media
+2026-11-18 10:38:55,932 INFO Checking saifulrahman.com
+2026-11-18 10:39:04,957 INFO Checking techinspection.net
+2026-11-18 10:39:15,266 INFO Checking testerszone.com
+2026-11-18 10:39:25,053 INFO Checking tools-zone.com
+2026-11-18 10:39:30,827 INFO Checking top10-zone.com
+2026-11-18 10:39:42,615 INFO Checking werbackspace.com
+2026-11-18 10:39:50,860 INFO Checking 10.studio
+2026-11-18 10:39:54,342 INFO Audit finished. Working=17 Warning=1 Down=0 Potential expiration=0 Unable to verify=0
+2026-11-18 10:39:54,343 INFO CSV report: /home/tanvir/projects/website-monitor/reports/website_report_2026-11-18.csv
+2026-11-18 10:39:54,344 INFO HTML report: /home/tanvir/projects/website-monitor/reports/website_report_2026-11-18.html
+2026-11-19 12:01:29,265 INFO Starting audit for 18 website(s).
+2026-11-19 12:01:29,268 INFO Checking axentialdistributions.com
+2026-11-19 12:01:40,971 INFO Checking businessinspection.com.bd
+2026-11-19 12:01:49,532 INFO Checking businessinspection.net
+2026-11-19 12:01:58,364 INFO Checking essentixsupplies.com
+2026-11-19 12:02:04,692 INFO Checking gooutdoorzone.com
+2026-11-19 12:02:09,749 INFO Checking inspection.xyz
+2026-11-19 12:02:18,842 INFO Checking mavic.digital
+2026-11-19 12:02:30,119 INFO Checking omnitraxretail.com
+2026-11-19 12:02:40,638 INFO Checking primepickery.com
+2026-11-19 12:02:52,403 INFO Checking productvideostudio.com
+2026-11-19 12:02:57,619 INFO Checking reviewzone.media
+2026-11-19 12:03:04,788 INFO Checking saifulrahman.com
+2026-11-19 12:03:14,483 INFO Checking techinspection.net
+2026-11-19 12:03:46,334 INFO Checking testerszone.com
+2026-11-19 12:04:00,991 INFO Checking tools-zone.com
+2026-11-19 12:04:07,504 INFO Checking top10-zone.com
+2026-11-19 12:04:22,531 INFO Checking werbackspace.com
+2026-11-19 12:04:35,958 INFO Checking 10.studio
+2026-11-19 12:04:43,389 INFO Audit finished. Working=17 Warning=1 Down=0 Potential expiration=0 Unable to verify=0
+2026-11-19 12:04:43,390 INFO CSV report: /home/tanvir/projects/website-monitor/reports/website_report_2026-11-19.csv
+2026-11-19 12:04:43,391 INFO HTML report: /home/tanvir/projects/website-monitor/reports/website_report_2026-11-19.html
+2026-11-21 09:37:12,694 INFO Starting audit for 18 website(s).
+2026-11-21 09:37:12,697 INFO Checking axentialdistributions.com
+2026-11-21 09:37:27,258 INFO Checking businessinspection.com.bd
+2026-11-21 09:37:33,637 INFO Checking businessinspection.net
+2026-11-21 09:37:38,669 INFO Checking essentixsupplies.com
+2026-11-21 09:37:47,669 INFO Checking gooutdoorzone.com
+2026-11-21 09:37:52,074 INFO Checking inspection.xyz
+2026-11-21 09:37:59,982 INFO Checking mavic.digital
+2026-11-21 09:38:11,679 INFO Checking omnitraxretail.com
+2026-11-21 09:38:25,298 INFO Checking primepickery.com
+2026-11-21 09:38:36,287 INFO Checking productvideostudio.com
+2026-11-21 09:38:53,441 INFO Checking reviewzone.media
+2026-11-21 09:39:03,367 INFO Checking saifulrahman.com
+2026-11-21 09:39:15,193 INFO Checking techinspection.net
+2026-11-21 09:39:28,840 INFO Checking testerszone.com
+2026-11-21 09:39:40,047 INFO Checking tools-zone.com
+2026-11-21 09:39:51,162 INFO Checking top10-zone.com
+2026-11-21 09:40:01,585 INFO Checking werbackspace.com
+2026-11-21 09:40:09,832 INFO Checking 10.studio
+2026-11-21 09:40:17,313 INFO Audit finished. Working=17 Warning=1 Down=0 Potential expiration=0 Unable to verify=0
+2026-11-21 09:40:17,314 INFO CSV report: /home/tanvir/projects/website-monitor/reports/website_report_2026-11-21.csv
+2026-11-21 09:40:17,318 INFO HTML report: /home/tanvir/projects/website-monitor/reports/website_report_2026-11-21.html
